@@ -1,0 +1,52 @@
+trigger:
+  - main
+  - develop
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  node_version: '20.x'
+
+stages:
+  - stage: E2E_Tests
+    displayName: 'Pruebas E2E - Playwright'
+    jobs:
+      - job: RunPlaywrightTests
+        displayName: 'Ejecutar Shards de Playwright'
+        strategy:
+          parallel: 2
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '$(node_version)'
+            displayName: 'Instalar Node.js $(node_version)'
+
+          - script: |
+              npm ci
+            displayName: 'Instalar dependencias npm'
+
+          - script: |
+              npx playwright install --with-deps
+            displayName: 'Instalar navegadores y dependencias de Playwright'
+
+          - script: |
+              npx playwright test --shard=$(System.JobPositionInPhase)/$(Strategy.Parallel)
+            displayName: 'Ejecutar tests E2E (Shard $(System.JobPositionInPhase)/$(Strategy.Parallel))'
+            condition: succeededOrFailed()
+
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: 'test-results/results.xml'
+              mergeTestResults: true
+              testRunTitle: 'Playwright E2E - Shard $(System.JobPositionInPhase)'
+            displayName: 'Publicar resultados de pruebas'
+
+          - task: PublishPipelineArtifact@1
+            condition: succeededOrFailed()
+            inputs:
+              targetPath: 'playwright-report'
+              artifactName: 'playwright-report-shard-$(System.JobPositionInPhase)'
+            displayName: 'Publicar reporte HTML de Playwright'
